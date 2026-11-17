@@ -1,0 +1,6 @@
+# Nunca enviar segredos para o GitHub
+.env
+.env.*
+*.local
+.vercel
+node_modules

@@ -72,7 +72,7 @@ function itemCompra(c, extra) {
   return `<button class="item" data-action="editar-compra" data-id="${c.id}">
     <div class="ico" style="background:${cartao ? cartao.cor : 'var(--surface2)'};color:#fff">${esc((cartao?.nome || '?')[0])}</div>
     <div class="meio">
-      <div class="titulo">${esc(c.descricao || c.categoria)}</div>
+      <div class="titulo">${c.origem === 'banco' ? '🏦 ' : ''}${esc(c.descricao || c.categoria)}${c.pendente ? ' <span class="muted small">(pendente)</span>' : ''}</div>
       <div class="sub">${extra || `${dataCurta(parseData(c.data))} · ${esc(cartao?.nome || 'Cartão removido')}${parc}`}</div>
     </div>
     <div class="valor">${moeda(c.valor)}</div>
@@ -96,12 +96,22 @@ function telaInicio() {
   const alertas = C.alertas(S);
   const proximos = pend.filter((p) => { const d = diffDias(p.vencimento, h); return !p.pago && d > S.config.diasAviso && d <= 30; });
 
-  let html = `<header class="topo"><h1>Minhas finanças</h1></header>
+  let html = `<header class="topo"><h1>Minhas finanças</h1>
+      ${S.conexao ? `<button class="btn peq" data-action="sincronizar" aria-label="Sincronizar com os bancos">↻ Bancos</button>` : ''}</header>
     <div class="card">
       <div class="muted small">A pagar em ${MESES[h.getMonth()]}</div>
       <div class="grande">${moeda(aPagar)}</div>
       <div class="linha-resumo"><span class="t-ok">Pago: ${moeda(pago)}</span><span class="muted">Total: ${moeda(aPagar + pago)}</span></div>
     </div>`;
+
+  if (S.saldos.length) {
+    html += `<div class="card"><div class="muted small">Saldo em conta${S.ultimaSync ? ` · atualizado ${tempoDesde(S.ultimaSync)}` : ''}</div>
+      <div class="grande">${moeda(soma(S.saldos.map((c) => ({ valor: c.saldo }))))}</div>
+      ${S.saldos.length > 1 ? S.saldos.map((c) => `<div class="small muted">${esc(c.nome)}: ${moeda(c.saldo)}</div>`).join('') : ''}</div>`;
+  }
+  if (S.avisosSync.length) {
+    html += `<div class="card aviso">${S.avisosSync.map((a) => `<p class="small">⚠️ ${esc(a)}</p>`).join('')}</div>`;
+  }
 
   if (!S.cartoes.length && !S.contas.length) {
     html += `<div class="card">
@@ -150,12 +160,13 @@ function telaCartoes() {
   for (const c of S.cartoes) {
     const chave = C.faturaDaData(c, h).chave;
     const f = C.fatura(S, c, chave);
-    const usado = C.limiteUsado(S, c);
-    const pct = c.limite ? Math.min(100, (usado / c.limite) * 100) : 0;
+    const disponivel = c.disponivelBanco != null ? c.disponivelBanco : c.limite - C.limiteUsado(S, c);
+    const usado = c.limite - disponivel;
+    const pct = c.limite ? Math.max(0, Math.min(100, (usado / c.limite) * 100)) : 0;
     html += `<button class="cartao-visual" style="background:linear-gradient(135deg, ${c.cor}, ${c.cor}bb)" data-action="abrir-cartao" data-id="${c.id}" data-mes="${chave}">
       <div style="display:flex;justify-content:space-between"><span class="nome">${esc(c.nome)}</span><span class="small">vence dia ${c.vencimento}</span></div>
       <div><div class="small" style="opacity:.85">Fatura de ${nomeMes(chave)}</div><div class="fat">${moeda(f.total)}</div></div>
-      ${c.limite ? `<div><div class="small" style="opacity:.85">Disponível ${moeda(c.limite - usado)} de ${moeda(c.limite)}</div><div class="barra"><i style="width:${pct}%"></i></div></div>` : ''}
+      ${c.limite ? `<div><div class="small" style="opacity:.85">Disponível ${moeda(disponivel)} de ${moeda(c.limite)}</div><div class="barra"><i style="width:${pct}%"></i></div></div>` : ''}
     </button>`;
   }
   return html;
@@ -169,6 +180,7 @@ function telaCartao(c) {
   const itens = [...f.itens].sort((a, b) => b.compra.data.localeCompare(a.compra.data));
   let html = `<header class="topo"><button class="voltar" data-action="voltar-cartoes" aria-label="Voltar">‹</button><h1>${esc(c.nome)}</h1>
       <button class="btn peq" data-action="editar-cartao" data-id="${c.id}">Editar</button></header>
+    ${c.conferirDias ? `<div class="card aviso small">Confira os dias de fechamento e vencimento deste cartão em <strong>Editar</strong> — o banco não informou.</div>` : ''}
     ${mesNav('mes-fatura', chave)}
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted small">Fatura de ${nomeMes(chave)}</span><span class="status ${st}">${nomesSt[st]}</span></div>
@@ -222,6 +234,16 @@ function telaAjustes() {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const instalado = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   return `<header class="topo"><h1>Ajustes</h1></header>
+    <div class="secao">Bancos (Open Finance)</div>
+    <div class="card">
+      ${S.conexao ? `<div class="ajuste"><div><strong>Conectado</strong><div class="muted small">${S.ultimaSync ? 'Última sincronização ' + tempoDesde(S.ultimaSync) : 'Ainda não sincronizado'}</div></div>
+          <button class="btn peq primario" data-action="sincronizar">↻ Sincronizar</button></div>
+        ${S.avisosSync.map((a) => `<p class="small t-perto">⚠️ ${esc(a)}</p>`).join('')}
+        <button class="btn bloco" style="margin-top:12px" data-action="conectar">Alterar conexão</button>`
+      : `<p class="muted small">Puxe automaticamente cartões, limites, compras e saldos do Bradesco, Itaú, Nubank, Porto e outros.</p>
+        <button class="btn primario bloco" data-action="conectar">Conectar aos bancos</button>`}
+    </div>
+
     <div class="secao">Lembretes</div>
     <div class="card">
       <div class="ajuste"><div><strong>Notificações</strong><div class="muted small">${S.config.notificacoes && perm === 'granted' ? 'Ativadas' : suporta ? 'Desativadas' : 'Não suportadas neste navegador'}</div></div>
@@ -348,6 +370,16 @@ async function enviarForm(form) {
   const id = form.dataset.id;
   const tipo = form.dataset.form;
 
+  if (tipo === 'conexao') {
+    let url = String(fd.get('url') || '').trim().replace(/\/+$/, '').replace(/\/api\/sincronizar$/, '');
+    if (!/^https:\/\//.test(url)) return toast('O endereço precisa começar com https://');
+    S.conexao = { url, senha: String(fd.get('senha') || '') };
+    fecharSheet();
+    await C.salvarEstado(S);
+    render();
+    return sincronizar(true);
+  }
+
   if (tipo === 'compra') {
     const valor = parseValor(fd.get('valor'));
     if (!(valor > 0)) return toast('Informe um valor válido');
@@ -396,6 +428,119 @@ async function enviarForm(form) {
   }
   await salvar();
   verificarNotificacoes();
+}
+
+/* ---------- Open Finance: sincronização com os bancos ---------- */
+
+let sincronizando = false;
+const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const BANCOS = ['nubank', 'itau', 'bradesco', 'porto', 'inter', 'santander', 'caixa', 'c6', 'xp', 'btg', 'picpay', 'mercado pago', 'neon', 'next'];
+
+function tempoDesde(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return `há ${Math.round(h / 24)} dia(s)`;
+}
+
+/* Junta os dados do banco com os do app, sem duplicar. */
+function mesclar(d) {
+  const r = { cartoes: 0, compras: 0, vinculadas: 0 };
+  const mapa = {};
+  for (const k of d.cartoes || []) {
+    let c = S.cartoes.find((x) => x.externoId === k.externoId);
+    if (!c) { // cartão que você já tinha cadastrado à mão? vincula pelo nome do banco
+      const banco = BANCOS.find((b) => norm(k.nome).includes(b));
+      c = banco && S.cartoes.find((x) => !x.externoId && norm(x.nome).includes(banco));
+      if (c) c.externoId = k.externoId;
+    }
+    if (!c) {
+      c = { id: uid(), externoId: k.externoId, nome: String(k.nome).slice(0, 30), cor: CORES[S.cartoes.length % CORES.length],
+        fechamento: k.fechamento || 1, vencimento: k.vencimento || 10, limite: k.limite || 0 };
+      if (!k.fechamento || !k.vencimento) c.conferirDias = true;
+      S.cartoes.push(c);
+      r.cartoes++;
+    } else if (c.conferirDias && k.fechamento && k.vencimento) {
+      c.fechamento = k.fechamento; c.vencimento = k.vencimento; delete c.conferirDias;
+    }
+    if (k.limite) c.limite = k.limite;
+    c.disponivelBanco = k.disponivel;
+    mapa[k.externoId] = c.id;
+  }
+
+  const conhecidos = new Set([...S.compras.filter((c) => c.externoId).map((c) => c.externoId), ...S.ignorados]);
+  for (const k of d.compras || []) {
+    const cartaoId = mapa[k.cartaoExternoId];
+    if (!cartaoId) continue;
+    const ja = S.compras.find((c) => c.externoId === k.externoId);
+    if (ja) { if (ja.pendente && !k.pendente) delete ja.pendente; continue; }
+    if (conhecidos.has(k.externoId)) continue;
+    // Mesma compra lançada à mão (ou ainda "pendente" no banco com outro código)? Só vincula.
+    const igual = S.compras.find((c) => (!c.externoId || c.pendente) && c.cartaoId === cartaoId &&
+      Math.abs(c.valor - k.valor) < 0.01 && (c.parcelas || 1) === k.parcelas &&
+      Math.abs(diffDias(parseData(c.data), parseData(k.data))) <= 3);
+    if (igual) {
+      igual.externoId = k.externoId;
+      if (k.pendente) igual.pendente = true; else delete igual.pendente;
+      r.vinculadas++;
+    } else {
+      S.compras.push({ id: uid(), cartaoId, descricao: k.descricao, valor: k.valor, data: k.data, parcelas: k.parcelas,
+        categoria: k.categoria, externoId: k.externoId, origem: 'banco', ...(k.pendente ? { pendente: true } : {}) });
+      r.compras++;
+    }
+    conhecidos.add(k.externoId);
+  }
+  S.saldos = d.contasBancarias || [];
+  S.avisosSync = d.avisos || [];
+  S.ultimaSync = d.atualizadoEm || new Date().toISOString();
+  return r;
+}
+
+async function sincronizar(manual) {
+  const cx = S.conexao;
+  if (!cx || !cx.url || !cx.senha) { if (manual) formConexao(); return; }
+  if (sincronizando) return;
+  sincronizando = true;
+  if (manual) toast('Buscando dados dos bancos…');
+  try {
+    // Busca a partir de 10 dias antes da última sincronização (ou 90 dias na primeira vez).
+    const desde = S.ultimaSync ? fmtISO(new Date(new Date(S.ultimaSync).getTime() - 10 * 864e5)) : undefined;
+    const resp = await fetch(cx.url.replace(/\/+$/, '') + '/api/sincronizar', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + cx.senha, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ desde }),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.erro || `Erro ${resp.status}`);
+    const r = mesclar(d);
+    await salvar();
+    if (manual || r.compras || r.cartoes) {
+      const partes = [];
+      if (r.cartoes) partes.push(`${r.cartoes} cartão(ões)`);
+      if (r.compras) partes.push(`${r.compras} compra(s) nova(s)`);
+      if (r.vinculadas) partes.push(`${r.vinculadas} já lançada(s)`);
+      toast(partes.length ? 'Importado: ' + partes.join(', ') : 'Tudo em dia com os bancos ✓');
+    }
+    verificarNotificacoes();
+  } catch (e) {
+    if (manual) toast(e.message === 'Failed to fetch' || e.name === 'TypeError' ? 'Não consegui acessar a API. Confira o endereço e a internet.' : e.message);
+  } finally {
+    sincronizando = false;
+  }
+}
+
+function formConexao() {
+  const cx = S.conexao || {};
+  abrirSheet(`<h3>Conectar aos bancos</h3>
+    <p class="muted small">Use o endereço da sua API no Vercel e a senha que você definiu lá (APP_SENHA). Eles ficam guardados só neste celular.</p>
+    <form data-form="conexao" autocomplete="off">
+      <label class="campo"><span>Endereço da API</span><input name="url" type="url" inputmode="url" placeholder="https://seu-projeto.vercel.app" value="${esc(cx.url)}" required></label>
+      <label class="campo"><span>Senha da API</span><input name="senha" type="password" value="${esc(cx.senha)}" required autocomplete="new-password"></label>
+      <button class="btn primario bloco" type="submit">Salvar e sincronizar</button>
+      ${S.conexao ? `<div class="acoes"><button class="btn perigo" type="button" data-action="desconectar">Desconectar</button></div>` : ''}
+    </form>`);
 }
 
 /* ---------- notificações, agenda, backup ---------- */
@@ -492,7 +637,8 @@ async function exportarICS() {
 
 async function exportarBackup() {
   const nome = `financas-backup-${fmtISO(hoje())}.json`;
-  await compartilharOuBaixar(JSON.stringify(S, null, 2), nome, 'application/json');
+  const copia = { ...S, conexao: null }; // a senha da API nunca vai para o arquivo de backup
+  await compartilharOuBaixar(JSON.stringify(copia, null, 2), nome, 'application/json');
 }
 
 async function importarBackup(arquivo) {
@@ -500,7 +646,9 @@ async function importarBackup(arquivo) {
     const dados = JSON.parse(await arquivo.text());
     if (!Array.isArray(dados.cartoes) || !Array.isArray(dados.compras)) throw new Error('formato');
     if (!confirm('Restaurar este backup? Os dados atuais do app serão substituídos.')) return;
+    const conexao = S.conexao;
     S = C.normalizar(dados);
+    S.conexao = conexao;
     await salvar();
     toast('Backup restaurado');
   } catch (e) {
@@ -553,7 +701,10 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'excluir-compra':
-      if (confirm('Excluir esta compra?')) { S.compras = S.compras.filter((c) => c.id !== id); fecharSheet(); await salvar(); toast('Compra excluída'); }
+      if (confirm('Excluir esta compra?')) {
+        const ex = S.compras.find((c) => c.id === id);
+        if (ex && ex.externoId) S.ignorados.push(ex.externoId);
+        S.compras = S.compras.filter((c) => c.id !== id); fecharSheet(); await salvar(); toast('Compra excluída'); }
       break;
     case 'excluir-conta':
       if (confirm('Excluir esta conta e todo o histórico de pagamentos dela?')) { S.contas = S.contas.filter((c) => c.id !== id); fecharSheet(); await salvar(); toast('Conta excluída'); }
@@ -568,6 +719,11 @@ document.addEventListener('click', async (e) => {
       }
       break;
     }
+    case 'sincronizar': await sincronizar(true); break;
+    case 'conectar': formConexao(); break;
+    case 'desconectar':
+      if (confirm('Desconectar dos bancos? As compras já importadas continuam no app.')) { S.conexao = null; fecharSheet(); await salvar(); toast('Desconectado'); }
+      break;
     case 'ativar-notif': await ativarNotificacoes(); break;
     case 'desativar-notif': S.config.notificacoes = false; await salvar(); break;
     case 'ics': await exportarICS(); break;
@@ -621,4 +777,5 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); even
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   verificarNotificacoes();
+  if (S.conexao && (!S.ultimaSync || Date.now() - new Date(S.ultimaSync) > 6 * 3600e3)) sincronizar(false);
 })();

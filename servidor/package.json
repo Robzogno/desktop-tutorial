@@ -1,0 +1,6 @@
+{
+  "name": "financas-api",
+  "private": true,
+  "description": "API pessoal que busca cartões e compras via Open Finance (Pluggy / Meu Pluggy).",
+  "engines": { "node": ">=20" }
+}

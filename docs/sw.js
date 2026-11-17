@@ -2,7 +2,7 @@
    (onde o celular permitir — Android/Chrome com o app instalado). */
 importScripts('core.js');
 
-const CACHE = 'financas-v1';
+const CACHE = 'financas-v2';
 const ARQUIVOS = [
   './', 'index.html', 'styles.css', 'core.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',

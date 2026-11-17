@@ -196,6 +196,12 @@
       contas: s.contas || [],
       faturasPagas: s.faturasPagas || {},
       config: Object.assign({ diasAviso: 3, notificacoes: false }, s.config),
+      // Open Finance (sincronização com os bancos)
+      conexao: s.conexao || null, // { url, senha } — fica só neste aparelho e não vai no backup
+      ultimaSync: s.ultimaSync || null,
+      avisosSync: s.avisosSync || [],
+      saldos: s.saldos || [],
+      ignorados: s.ignorados || [], // compras do banco que você excluiu (não reimportar)
     };
   }
   const lerEstado = async () => normalizar(await ler('state'));
