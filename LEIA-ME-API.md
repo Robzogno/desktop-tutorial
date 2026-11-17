@@ -31,7 +31,7 @@ Esta API busca seus **cartões, limites, compras e saldos** nos bancos (via Plug
 ### 3. Vercel: publicar a API
 1. Acesse **vercel.com** e clique em *Sign up* → *Continue with GitHub*.
 2. Clique em **Add New → Project** e importe o repositório `desktop-tutorial`.
-3. Em **Root Directory**, clique em *Edit* e escolha **`servidor`**. Em *Framework Preset*, deixe **Other**.
+3. Deixe **Root Directory** como está (`./`) e *Application Preset* como **Other**.
 4. Abra **Environment Variables** e adicione:
    - `PLUGGY_CLIENT_ID`: o Client ID
    - `PLUGGY_CLIENT_SECRET`: o Client Secret
